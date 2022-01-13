@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:alpine3.15
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./docker/database/pg:/var/lib/postgresql/data
+      - ./docker/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+  app:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: .
+      target: dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/opt/app/api
+volumes:
+  logvolume01: {}
