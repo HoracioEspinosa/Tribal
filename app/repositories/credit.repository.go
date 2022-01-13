@@ -7,17 +7,18 @@ import (
 )
 
 type creditLineRepository struct {
-	creditLineRequest *models.CreditLineRequest
+	creditLine *models.CreditLine
 }
 
 type CreditLineRepository interface {
 	GetCreditLinesByLineAndValidStatus(creditLineRequested float32, valid bool) []models.CreditLine
 	GetLinesFromCustomDate(date time.Time, checkFails bool) []models.CreditLine
+	InsertCreditLineItem(creditLine *models.CreditLine) error
 }
 
-func NewCreditLineRepository(creditLineRequest *models.CreditLineRequest) *creditLineRepository {
+func NewCreditLineRepository(creditLine *models.CreditLine) *creditLineRepository {
 	return &creditLineRepository{
-		creditLineRequest: creditLineRequest,
+		creditLine: creditLine,
 	}
 }
 
@@ -44,4 +45,14 @@ func (c creditLineRepository) GetLinesFromCustomDate(date time.Time, checkFails 
 	query.Find(&result)
 
 	return result
+}
+
+func (c creditLineRepository) InsertCreditLineItem(creditLine *models.CreditLine) error {
+	result := helpers.DB.Debug().Table("credit_line").Create(&creditLine)
+
+	if result.RowsAffected == 0 || result.Error != nil {
+		result = helpers.DB.Debug().Table("credit_line").Updates(&creditLine).Where("id", creditLine.Id)
+	}
+
+	return result.Error
 }

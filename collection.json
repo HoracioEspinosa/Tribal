@@ -1,0 +1,58 @@
+{
+	"info": {
+		"_postman_id": "a2b39ee7-0aa6-4b79-8f1d-9ee24866c25a",
+		"name": "Tribal",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Tribal welcome",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/credit/validate",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"credit",
+						"validate"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Credit validate",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"foundingType\": \"SME\",\n    \"cashBalance\": 435.30,\n    \"monthlyRevenue\": 4235.45,\n    \"requestedCreditLine\": 100,\n    \"requestedDate\": \"2022-01-15T00:45:39.860Z\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/credit/validate",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"credit",
+						"validate"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

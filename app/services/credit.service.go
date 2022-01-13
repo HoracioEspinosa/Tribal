@@ -1,18 +1,19 @@
 package services
 
 import (
+	"Tribal/app/exceptions"
 	"Tribal/app/models"
 	"Tribal/app/repositories"
-	"fmt"
 	"github.com/labstack/echo/v4"
+	"net/http"
 	"strconv"
 	"time"
 )
 
 type creditLineService struct {
-	creditLineRequest *models.CreditLineRequest
-	context           echo.Context
-	repository        repositories.CreditLineRepository
+	creditLine *models.CreditLine
+	context    echo.Context
+	repository repositories.CreditLineRepository
 }
 
 type CreditLineService interface {
@@ -21,46 +22,46 @@ type CreditLineService interface {
 	CheckCreditStatus() []models.CreditLine
 }
 
-func NewCreditLineService(creditLineRequest *models.CreditLineRequest, ctx echo.Context) *creditLineService {
-	repository := repositories.NewCreditLineRepository(creditLineRequest)
+func NewCreditLineService(creditLine *models.CreditLine, ctx echo.Context) *creditLineService {
+	repository := repositories.NewCreditLineRepository(creditLine)
 
 	return &creditLineService{
-		creditLineRequest: creditLineRequest,
-		context:           ctx,
-		repository:        repository,
+		creditLine: creditLine,
+		context:    ctx,
+		repository: repository,
 	}
 }
 
-func (c creditLineService) CheckTimeForRequest() (err error) {
+func (c creditLineService) CheckTimeForRequest() (err error, code int) {
 	now := time.Now()
 	timestamp := now.Unix()
+	code = http.StatusOK
+	err = nil
+
 	var resultsOn30Seconds = c.repository.GetLinesFromCustomDate(getDateFromTimestamp(timestamp-30), false)
 	var resultsOn2Minutes = c.repository.GetLinesFromCustomDate(getDateFromTimestamp(timestamp-120), false)
 	var has3FailedRequests = c.repository.GetLinesFromCustomDate(getDateFromTimestamp(timestamp), true)
 
 	if len(has3FailedRequests) > 0 {
-		// TODO: Send message "A sales agent will contact you"
+		err = &exceptions.CreditLineFailException{}
+		code = http.StatusBadRequest
 	}
 
-	if len(resultsOn2Minutes) >= 3 {
-		// TODO: Send error with code 429
+	if (len(resultsOn2Minutes) >= 3) || (len(resultsOn30Seconds) > 0) {
+		err = &exceptions.RequestLimitException{}
+		code = http.StatusTooManyRequests
 	}
 
-	if len(resultsOn30Seconds) > 0 {
-		// TODO: Send error with code 429
-	}
-
-	fmt.Printf("Lineas de credito \n%v\n%v\n%v\n", has3FailedRequests, resultsOn2Minutes, resultsOn30Seconds)
-
-	return nil
+	return err, code
 }
 
-func (c creditLineService) CheckCreditLineForValidation() (err error) {
-	monthlyValue := c.creditLineRequest.MonthlyRevenue / 5
-	cashValue := c.creditLineRequest.CashBalance
+func (c creditLineService) CheckCreditLineForValidation() (err error, code int) {
+	monthlyValue := c.creditLine.MonthlyRevenue / 5
+	cashValue := c.creditLine.CashBalance
 	isValidCreditLine := false
+	code = http.StatusOK
 
-	switch c.creditLineRequest.FoundingType {
+	switch c.creditLine.FoundingTypes {
 	case "STARTUP":
 		cashValue = cashValue / 3
 		isValidCreditLine = (monthlyValue > 0) && (cashValue > 0)
@@ -70,32 +71,51 @@ func (c creditLineService) CheckCreditLineForValidation() (err error) {
 		break
 	default:
 		isValidCreditLine = false
-		// TODO: Print message "FoundingType not found" > 400
-		break
+		err = &exceptions.FoundingTypeException{}
+		code = http.StatusBadRequest
 	}
+
+	err, isValidCreditLine = c.CheckCreditStatus(c.creditLine, isValidCreditLine)
 
 	if isValidCreditLine {
-		// TODO: Print APPROVED message with 200 OK status code
-	} else {
-		// TODO: Print REJECTED message with 406 NOT_ACCEPTABLE status code
+		code = http.StatusOK
+		err = nil
 	}
 
-	c.CheckCreditStatus(c.creditLineRequest.RequestedCreditLine)
+	if !isValidCreditLine || err != nil {
+		err = &exceptions.RejectedException{}
+		code = http.StatusNotAcceptable
+	}
 
-	return nil
+	return err, code
 }
 
-func (c creditLineService) CheckCreditStatus(requestedCreditLine float32) {
-	creditLine := c.repository.GetCreditLinesByLineAndValidStatus(c.creditLineRequest.RequestedCreditLine, true)
+func (c creditLineService) CheckCreditStatus(creditLineRequest *models.CreditLine, validCreditLine bool) (err error, line bool) {
+	creditLine := c.repository.GetCreditLinesByLineAndValidStatus(c.creditLine.RequestedCreditLine, true)
 
 	if len(creditLine) <= 0 {
-		creditLineList := c.repository.GetCreditLinesByLineAndValidStatus(c.creditLineRequest.RequestedCreditLine, false)
+		creditLineList := c.repository.GetCreditLinesByLineAndValidStatus(c.creditLine.RequestedCreditLine, false)
+
 		if len(creditLineList) >= 3 {
-			// TODO: Generate an exception
+			err = &exceptions.CreditLineFailException{}
+			validCreditLine = false
 		} else {
-			// TODO: Create a new registry in credit_line table
+			if len(creditLineList) > 0 {
+				creditLineRequest.FailTimes = creditLineList[len(creditLineList)-1].FailTimes + 1
+				creditLineRequest.Id = creditLineList[len(creditLineList)-1].Id
+			} else {
+				creditLineRequest.FailTimes = 1
+			}
+
+			creditLineRequest.Valid = validCreditLine
+
+			if creditLineRequest.FailTimes < 4 {
+				err = c.repository.InsertCreditLineItem(creditLineRequest)
+			}
 		}
 	}
+
+	return err, validCreditLine
 }
 
 func getDateFromTimestamp(timestamp int64) time.Time {

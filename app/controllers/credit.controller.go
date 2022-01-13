@@ -20,18 +20,51 @@ func NewCreditController() CreditController {
 }
 
 func (c *creditController) Validate(ctx echo.Context) (err error) {
-	customer := &models.CreditLineRequest{}
-	if err = ctx.Bind(customer); err != nil {
+	request := &models.CreditLineRequest{}
+
+	if err = ctx.Bind(request); err != nil {
 		return
 	}
 
-	customer.RequestedDateParsed, _ = time.Parse(time.RFC3339, customer.RequestedDate)
-	creditLineService := services.NewCreditLineService(customer, ctx)
-	err = creditLineService.CheckTimeForRequest()
-	
-	if err != nil {
-		return err
+	parsedDate, _ := time.Parse(time.RFC3339, request.RequestedDate)
+
+	customer := &models.CreditLine{
+		CashBalance:         request.CashBalance,
+		FailTimes:           0,
+		FoundingTypes:       request.FoundingType,
+		MonthlyRevenue:      request.MonthlyRevenue,
+		RequestedCreditLine: request.RequestedCreditLine,
+		RequestedDate:       parsedDate,
+		Valid:               false,
 	}
 
-	return ctx.JSON(http.StatusOK, customer)
+	creditLineService := services.NewCreditLineService(customer, ctx)
+	err, code := creditLineService.CheckTimeForRequest()
+
+	if err != nil {
+		return ctx.JSON(code, map[string]interface{}{
+			"status":  "ERROR",
+			"message": err.Error(),
+		})
+	} else {
+		err, code = creditLineService.CheckCreditLineForValidation()
+		if err != nil {
+			return ctx.JSON(code, map[string]interface{}{
+				"status":  "ERROR",
+				"message": err.Error(),
+			})
+		} else {
+			err = nil
+			code = http.StatusOK
+		}
+	}
+
+	if err == nil {
+		return ctx.JSON(code, map[string]interface{}{
+			"status":  "OK",
+			"message": "APPROVED",
+		})
+	}
+
+	return err
 }
